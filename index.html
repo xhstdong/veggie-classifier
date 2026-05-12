@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeggieVision — Plant & Vegetable Classifier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script type="module">
+    import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+    window.GradioClient = Client;
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #f5f0e8;
+      --dark: #1a1a12;
+      --green: #2d5a27;
+      --green-light: #4a8c42;
+      --green-pale: #c8dfc5;
+      --amber: #c8893a;
+      --amber-pale: #f0dfc0;
+      --red: #b84444;
+      --text-body: #3a3a2a;
+      --text-muted: #7a7a60;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--cream);
+      color: var(--text-body);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Grain overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.035;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 48px;
+      border-bottom: 1px solid rgba(45,90,39,0.15);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--green);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    .logo-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.35rem;
+      color: var(--dark);
+      letter-spacing: -0.02em;
+    }
+
+    .logo-text em {
+      font-style: italic;
+      color: var(--green);
+    }
+
+    .badge {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border: 1px solid var(--green-pale);
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      min-height: calc(100vh - 85px);
+    }
+
+    .hero-left {
+      padding: 80px 64px 60px 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-right: 1px solid rgba(45,90,39,0.12);
+      position: relative;
+    }
+
+    .hero-left::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--green-pale), transparent);
+    }
+
+    .eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--green-light);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 4vw, 3.6rem);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      color: var(--dark);
+      margin-bottom: 24px;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--green);
+    }
+
+    .hero-desc {
+      font-size: 1.05rem;
+      line-height: 1.7;
+      color: var(--text-muted);
+      max-width: 400px;
+      margin-bottom: 40px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 32px;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem;
+      color: var(--dark);
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ── Right panel (upload & results) ── */
+    .hero-right {
+      padding: 60px 48px 60px 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 28px;
+    }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--green-pale);
+      border-radius: 16px;
+      padding: 40px 28px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: rgba(200,223,197,0.08);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--green-light);
+      background: rgba(200,223,197,0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(45,90,39,0.1);
+    }
+
+    .drop-zone.has-image {
+      border-color: var(--green);
+      padding: 12px;
+    }
+
+    .drop-icon {
+      font-size: 2.4rem;
+      margin-bottom: 14px;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+
+    .drop-zone:hover .drop-icon {
+      transform: scale(1.15) rotate(-5deg);
+    }
+
+    .drop-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.15rem;
+      color: var(--dark);
+      margin-bottom: 8px;
+    }
+
+    .drop-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-family: 'DM Mono', monospace;
+    }
+
+    #preview {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: 10px;
+      display: none;
+    }
+
+    #preview.visible { display: block; }
+
+    #file-input { display: none; }
+
+    /* ── Classify button ── */
+    .btn-classify {
+      width: 100%;
+      padding: 16px;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-classify::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+    }
+
+    .btn-classify:hover:not(:disabled) {
+      background: var(--green-light);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(45,90,39,0.3);
+    }
+
+    .btn-classify:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-classify.loading .btn-text { opacity: 0; }
+
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      position: absolute;
+      display: none;
+    }
+
+    .btn-classify.loading .spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Categories (left panel) ── */
+    .categories-section {
+      margin-top: 36px;
+    }
+
+    .categories-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .categories-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .cat-pill {
+      font-size: 0.78rem;
+      color: var(--green);
+      background: rgba(200,223,197,0.35);
+      border: 1px solid var(--green-pale);
+      border-radius: 20px;
+      padding: 4px 11px;
+      transition: all 0.2s ease;
+      cursor: default;
+    }
+
+    .cat-pill.active {
+      background: var(--green);
+      color: #fff;
+      border-color: var(--green);
+      transform: scale(1.06);
+      box-shadow: 0 3px 12px rgba(45,90,39,0.25);
+    }
+
+    /* ── Result display ── */
+    .results-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 28px;
+      background: rgba(200,223,197,0.15);
+      border: 1px solid var(--green-pale);
+      border-radius: 16px;
+      animation: fadeUp 0.4s ease forwards;
+      text-align: center;
+    }
+
+    .results-container.visible { display: flex; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .results-eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .result-label-display {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .result-icon {
+      font-size: 2.4rem;
+      line-height: 1;
+    }
+
+    .result-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      color: var(--dark);
+      letter-spacing: -0.02em;
+    }
+
+    /* ── Status message ── */
+    .status-msg {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--amber);
+      text-align: center;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(184,68,68,0.08);
+      border: 1px solid rgba(184,68,68,0.3);
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.88rem;
+      color: var(--red);
+      display: none;
+      font-family: 'DM Mono', monospace;
+    }
+
+    .error-box.visible { display: block; }
+
+    /* ── Decorative botanical SVG ── */
+    .botanical {
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.07;
+    }
+
+    .botanical-tl { top: -40px; left: -40px; width: 320px; transform: rotate(-15deg); }
+    .botanical-br { bottom: -60px; right: -40px; width: 280px; transform: rotate(160deg); }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+      header { padding: 18px 24px; }
+      .hero { grid-template-columns: 1fr; min-height: auto; }
+      .hero-left { padding: 48px 24px 40px; border-right: none; border-bottom: 1px solid rgba(45,90,39,0.12); }
+      .hero-right { padding: 40px 24px 60px; }
+      h1 { font-size: 2.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Botanical decoration -->
+  <svg class="botanical botanical-tl" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M150 280 C80 240 20 180 40 100 C60 20 140 10 180 60 C220 110 200 200 150 280Z" fill="var(--green)" stroke="var(--green)" stroke-width="2"/>
+    <path d="M150 280 C200 220 260 160 240 90 C220 20 140 30 110 80 C80 130 110 210 150 280Z" fill="var(--green-light)"/>
+    <line x1="150" y1="280" x2="150" y2="80" stroke="var(--dark)" stroke-width="3"/>
+    <path d="M150 200 C120 180 90 160 80 130" stroke="var(--dark)" stroke-width="2" fill="none"/>
+    <path d="M150 200 C180 180 210 160 220 130" stroke="var(--dark)" stroke-width="2" fill="none"/>
+    <path d="M150 150 C130 135 110 120 105 100" stroke="var(--dark)" stroke-width="1.5" fill="none"/>
+    <path d="M150 150 C170 135 190 120 195 100" stroke="var(--dark)" stroke-width="1.5" fill="none"/>
+  </svg>
+
+  <svg class="botanical botanical-br" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="150" cy="150" rx="110" ry="70" fill="var(--green)" transform="rotate(-20 150 150)"/>
+    <ellipse cx="150" cy="150" rx="80" ry="50" fill="var(--green-light)" transform="rotate(-20 150 150)"/>
+    <path d="M60 170 C100 140 200 140 240 170" stroke="var(--dark)" stroke-width="3" fill="none"/>
+    <path d="M80 160 C110 130 140 120 150 110" stroke="var(--dark)" stroke-width="1.5" fill="none"/>
+    <path d="M220 160 C190 130 160 120 150 110" stroke="var(--dark)" stroke-width="1.5" fill="none"/>
+  </svg>
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🌿</div>
+      <span class="logo-text">Veggie<em>Vision</em></span>
+    </div>
+    <span class="badge">AI · Image Classifier</span>
+  </header>
+
+  <!-- Main content -->
+  <main class="hero">
+    <!-- Left: copy -->
+    <div class="hero-left">
+      <p class="eyebrow">Powered by Hugging Face</p>
+      <h1>Identify any <em>vegetable</em> in seconds.</h1>
+      <p class="hero-desc">
+        Upload a photo and our AI model will identify which of the 15 supported vegetables it is — instantly.
+      </p>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-num">∞</span>
+          <span class="stat-label">Free uses</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">~2s</span>
+          <span class="stat-label">Avg response</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">15</span>
+          <span class="stat-label">Categories</span>
+        </div>
+      </div>
+
+      <div class="categories-section">
+        <p class="categories-label">Supported vegetables</p>
+        <div class="categories-grid" id="categories-grid"></div>
+      </div>
+    </div>
+
+    <!-- Right: upload + results -->
+    <div class="hero-right">
+      <div
+        class="drop-zone"
+        id="drop-zone"
+        title="Click or drag an image here"
+      >
+        <span class="drop-icon" id="drop-icon">🥦</span>
+        <p class="drop-title">Drop your image here</p>
+        <p class="drop-sub">or click to browse · jpg, png, webp</p>
+        <img id="preview" alt="Preview" />
+      </div>
+
+      <input type="file" id="file-input" accept="image/*" />
+
+      <button class="btn-classify" id="classify-btn" disabled>
+        <span class="btn-text">Classify Vegetable</span>
+        <div class="spinner"></div>
+      </button>
+
+      <p id="status-msg" class="status-msg" style="display:none"></p>
+
+      <div class="error-box" id="error-box"></div>
+
+      <div class="results-container" id="results">
+        <p class="results-eyebrow">Identified as</p>
+        <div class="result-label-display">
+          <span class="result-icon" id="result-icon">🌿</span>
+          <span class="result-name" id="result-name">—</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    async function getClient(onStatus) {
+      let attempts = 0;
+      while (!window.GradioClient && attempts < 30) {
+        await new Promise(r => setTimeout(r, 200));
+        attempts++;
+      }
+      if (!window.GradioClient) throw new Error("Gradio client failed to load.");
+      return window.GradioClient.connect("xhstdong/veggies", {
+        status_callback: (status) => {
+          if (!onStatus) return;
+          if (status.stage === "sleeping" || status.stage === "building") {
+            onStatus("waking");
+          } else if (status.stage === "running") {
+            onStatus("running");
+          }
+        }
+      });
+    }
+
+    const CATEGORIES = [
+      'Bean','Bitter_Gourd','Bottle_Gourd','Brinjal','Broccoli',
+      'Cabbage','Capsicum','Carrot','Cauliflower','Cucumber',
+      'Papaya','Potato','Pumpkin','Radish','Tomato'
+    ];
+
+    const VEGGIE_ICONS = {
+      Bean: '🫘', Bitter_Gourd: '🌿', Bottle_Gourd: '🫙', Brinjal: '🍆',
+      Broccoli: '🥦', Cabbage: '🥬', Capsicum: '🫑', Carrot: '🥕',
+      Cauliflower: '🥦', Cucumber: '🥒', Papaya: '🍈', Potato: '🥔',
+      Pumpkin: '🎃', Radish: '🌱', Tomato: '🍅',
+    };
+
+    const statusMsg  = document.getElementById('status-msg');
+    function setStatus(text) {
+      statusMsg.textContent = text;
+      statusMsg.style.display = text ? 'block' : 'none';
+    }
+    const catGrid = document.getElementById('categories-grid');
+    CATEGORIES.forEach(cat => {
+      const pill = document.createElement('span');
+      pill.className = 'cat-pill';
+      pill.textContent = cat.replace(/_/g, ' ');
+      pill.dataset.cat = cat;
+      catGrid.appendChild(pill);
+    });
+
+    const dropZone    = document.getElementById('drop-zone');
+    const fileInput   = document.getElementById('file-input');
+    const preview     = document.getElementById('preview');
+    const dropIcon    = document.getElementById('drop-icon');
+    const classifyBtn = document.getElementById('classify-btn');
+    const resultsBox  = document.getElementById('results');
+    const resultIcon  = document.getElementById('result-icon');
+    const resultName  = document.getElementById('result-name');
+    const errorBox    = document.getElementById('error-box');
+
+    let selectedFile = null;
+
+    function loadFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      selectedFile = file;
+      preview.src = URL.createObjectURL(file);
+      preview.classList.add('visible');
+      dropIcon.style.display = 'none';
+      dropZone.querySelector('.drop-title').style.display = 'none';
+      dropZone.querySelector('.drop-sub').style.display = 'none';
+      dropZone.classList.add('has-image');
+      classifyBtn.disabled = false;
+      resultsBox.classList.remove('visible');
+      errorBox.classList.remove('visible');
+      // Clear any active pill
+      document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      loadFile(e.dataTransfer.files[0]);
+    });
+
+    classifyBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      classifyBtn.disabled = true;
+      classifyBtn.classList.add('loading');
+      errorBox.classList.remove('visible');
+      resultsBox.classList.remove('visible');
+      document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+      setStatus('');
+
+      try {
+        const client = await getClient((stage) => {
+          if (stage === 'waking') setStatus('⏳ Waking up the model… this may take ~30s on first use.');
+          else if (stage === 'running') setStatus('');
+        });
+        setStatus('');
+        const result = await client.predict("/predict", { image: selectedFile });
+        const data = result.data;
+        const label = Array.isArray(data) ? data[0]?.label : data?.label;
+        if (!label) throw new Error("No label returned from model.");
+        showResult(label);
+      } catch (err) {
+        console.error(err);
+        errorBox.textContent = `⚠ ${err.message || 'Prediction failed. Please try again.'}`;
+        errorBox.classList.add('visible');
+      } finally {
+        classifyBtn.disabled = false;
+        classifyBtn.classList.remove('loading');
+        setStatus('');
+      }
+    });
+
+    function showResult(label) {
+      // Match against known categories (case-insensitive)
+      const matched = CATEGORIES.find(c => c.toLowerCase() === label.toLowerCase()) || label;
+      const displayName = matched.replace(/_/g, ' ');
+      const icon = VEGGIE_ICONS[matched] || '🌿';
+
+      resultIcon.textContent = icon;
+      resultName.textContent = displayName;
+      resultsBox.classList.add('visible');
+
+      // Highlight the matching pill
+      document.querySelectorAll('.cat-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.cat === matched);
+      });
+    }
+  </script>
+</body>
+</html>
